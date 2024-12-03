@@ -1,0 +1,5 @@
+pdfplumber
+pdfminer.high_level
+pandas
+streamlit
+Pillow 

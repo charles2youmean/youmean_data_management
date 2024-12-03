@@ -1,5 +1,4 @@
 pdfplumber
-pdfminer.six
 pandas
 streamlit
 Pillow

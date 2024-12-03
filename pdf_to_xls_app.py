@@ -20,12 +20,6 @@ def extract_text_with_pdfplumber(pdf_file):
     except Exception as e:
         return None
 
-#------ Fonction pour l'extraction de texte avec PDFMiner ------#
-def extract_text_with_pdfminer(pdf_file):
-    try:
-        return pdfminer_extract_text(pdf_file).strip()
-    except Exception as e:
-        return None
 
 #------ Fonction principale d'extraction ------#
 def extract_text_from_pdf(pdf_file):

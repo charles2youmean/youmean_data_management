@@ -1,87 +1,103 @@
-
-#------
-# Lecture d'un pdf et extraction du texte
-#------
-
-import PyPDF2
-
-def extract_text_from_pdf(pdf_path):
-    with open(pdf_path, 'rb') as file:
-        reader = PyPDF2.PdfReader(file)
-        text = ''
-        for page in reader.pages:
-            text += page.extract_text()
-        return text
-
-
-#------
-# Segmeter le texte en phrases propres
-#------
-
+#------ Importation des modules nécessaires ------#
+import pdfplumber
+from pdfminer.high_level import extract_text as pdfminer_extract_text
+import pandas as pd
 import re
+import os
+import string
+import streamlit as st
+from PIL import Image
+import base64
 
+#------ Fonction pour l'extraction de texte avec pdfplumber ------#
+def extract_text_with_pdfplumber(pdf_file):
+    try:
+        with pdfplumber.open(pdf_file) as pdf:
+            text = ""
+            for page in pdf.pages:
+                text += page.extract_text()
+            return text.strip()
+    except Exception as e:
+        return None
+
+#------ Fonction pour l'extraction de texte avec PDFMiner ------#
+def extract_text_with_pdfminer(pdf_file):
+    try:
+        return pdfminer_extract_text(pdf_file).strip()
+    except Exception as e:
+        return None
+
+#------ Fonction principale d'extraction ------#
+def extract_text_from_pdf(pdf_file):
+    text = extract_text_with_pdfplumber(pdf_file)
+    if not text:
+        text = extract_text_with_pdfminer(pdf_file)
+    return text
+
+#------ Fonction pour nettoyer et segmenter le texte ------#
 def clean_and_split_text(text):
-    # Supprime les retours à la ligne non nécessaires
+    """
+    Nettoie et segmente le texte en phrases individuelles.
+    """
+    # Supprime les retours à la ligne inutiles
     text = re.sub(r'(?<!\.\n)(?<!\n\n)\n', ' ', text)
-    # Segmente le texte en phrases
+    # Segmente le texte en phrases basées sur la ponctuation
     sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
     return [sentence.strip() for sentence in sentences if sentence.strip()]
 
 
-#------
-# Généner un Excel
-#------
+#------ Fonction pour vérifier texte aberrant ------#
+def is_text_aberrant(text, threshold=0.7):
+    if not text:
+        return True
+    total_characters = len(text)
+    alphabetic_characters = sum(1 for char in text if char.isalpha())
+    alphabetic_ratio = alphabetic_characters / total_characters if total_characters > 0 else 0
+    return alphabetic_ratio < threshold
 
-import pandas as pd
+#------ Fonction pour remplacer les puces par des retours à la ligne ------#
+def replace_bullets_with_newlines(text, symbols):
+    """
+    Remplace les puces ou caractères spéciaux par des retours à la ligne.
+    """
+    pattern = f"({'|'.join(re.escape(symbol) for symbol in symbols)})"
+    text = re.sub(pattern, r'\n\1', text)
+    text = "\n".join(line.strip() for line in text.split("\n") if line.strip())
+    return text
 
-def save_to_excel(sentences, pdf_name, output_path="output.xlsx"):
-    data = {"Texte": sentences, "Source": [pdf_name] * len(sentences)}
+#------ Fonction pour sauvegarder en Excel ------#
+def save_combined_to_excel(sentences_sources, output_path):
+    data = {
+        "Texte": [s[0] for s in sentences_sources],
+        "Source": [s[1] for s in sentences_sources],
+    }
     df = pd.DataFrame(data)
     df.to_excel(output_path, index=False)
-    print(f"Fichier Excel enregistré sous : {output_path}")
+    return output_path
 
+#------ Interface Streamlit ------#
+st.title("Extraction et nettoyage de PDF vers un Excel sourcé")
 
-#------
-# Interface Streamlit
-#------
-
-import os
-from PyPDF2 import PdfReader
-import pandas as pd
-import re
-import streamlit as st
-
-#CSS mise en page streamlit
-from PIL import Image
-import base64
-
-# Charger l'image du logo (fichier dans le même dossier que le script)
+# CSS pour personnaliser la barre latérale
 logo_path = "Favicon HD bleu-OK.png"
 with open(logo_path, "rb") as image_file:
     logo_base64 = base64.b64encode(image_file.read()).decode("utf-8")
 
-# CSS pour unifier les couleurs de la bande grise
 st.sidebar.markdown(
     """
     <style>
-        /* Style de la barre latérale */
         .sidebar {
-            background-color: #f0f0f0; /* Gris clair uniforme */
+            background-color: #f0f0f0;
             padding: 20px;
             text-align: center;
         }
-
-        /* Uniformisation de l'arrière-plan dans la barre */
         section[data-testid="stSidebar"] > div:first-child {
-            background-color: #f0f0f0; /* Appliquer la même couleur grise */
+            background-color: #f0f0f0;
         }
-
-        /* Style du logo et du texte */
         .sidebar img {
             width: 80px;
             margin-bottom: 15px;
         }
-
         .sidebar-text {
             font-size: 18px;
             font-weight: bold;
@@ -92,62 +108,70 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 
-# HTML pour afficher le logo et le texte
 st.sidebar.markdown(
     f"""
     <div class="sidebar">
         <img src="data:image/png;base64,{logo_base64}" alt="Logo">
-        <div class="sidebar-text">Youmean Data Management Solutions</div>
+        <div class="sidebar-text">Youmean Data Management Tools</div>
     </div>
     """,
     unsafe_allow_html=True
 )
 
-# Fonctions
-def extract_text_from_pdf(pdf_file):
-    reader = PdfReader(pdf_file)
-    text = ''
-    for page in reader.pages:
-        text += page.extract_text()
-    return text
+# Téléchargement de fichiers PDF
+uploaded_files = st.file_uploader(
+    "Déposez un ou plusieurs fichiers PDF", 
+    accept_multiple_files=True, 
+    type="pdf",
+    key="unique_file_uploader"
+)
 
-def clean_and_split_text(text):
-    text = re.sub(r'(?<!\.\n)(?<!\n\n)\n', ' ', text)
-    sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
-    return [sentence.strip() for sentence in sentences if sentence.strip()]
-
-def save_to_excel(sentences, pdf_name, output_folder="."):
-    base_name = os.path.splitext(pdf_name)[0]
-    output_path = os.path.join(output_folder, f"{base_name}.xlsx")
-    data = {"Texte": sentences, "Source": [pdf_name] * len(sentences)}
-    df = pd.DataFrame(data)
-    df.to_excel(output_path, index=False)
-    return output_path
-
-# Interface Streamlit
-st.title("Extraction et nettoyage de PDF vers Excel")
-uploaded_files = st.file_uploader("Déposez un ou plusieurs PDF ici", accept_multiple_files=True, type="pdf")
-
-if st.button("Lancer l'extraction"):
+# Bouton pour lancer l'extraction
+if st.button("Lancer l'extraction", key="extract_button"):
     if uploaded_files:
-        output_files = []
+        sentences_sources = []
+        file_statuses = []  # Liste des statuts des fichiers
+
         for uploaded_file in uploaded_files:
             pdf_name = uploaded_file.name
             text = extract_text_from_pdf(uploaded_file)
-            sentences = clean_and_split_text(text)
-            output_path = save_to_excel(sentences, pdf_name)
-            output_files.append(output_path)
 
-        # Génère les liens de téléchargement
-        if output_files:
+            if text is None or is_text_aberrant(text):
+                # Ajouter une alerte dans l'Excel
+                sentences_sources.append((f"❌ATTENTION❌ : Fichier non lisible par l'application YOUMEAN ({pdf_name})", pdf_name))
+                file_statuses.append((pdf_name, "❌ Données aberrantes"))
+            else:
+                file_statuses.append((pdf_name, "✅ Extraction réussie"))
+                text = replace_bullets_with_newlines(text, symbols=["•", "*", "-", "→"])
+                sentences = clean_and_split_text(text)
+                sentences_sources.extend([(sentence, pdf_name) for sentence in sentences])
+
+        # Déterminer le nom du fichier de sortie
+        if len(uploaded_files) == 1:
+            base_name = os.path.splitext(uploaded_files[0].name)[0]
+            output_path = f"{base_name}.xlsx"
+        else:
+            output_path = "multiples_sources.xlsx"
+
+        if sentences_sources:
+            save_combined_to_excel(sentences_sources, output_path)
             st.success("Extraction terminée.")
-            for output_file in output_files:
-                with open(output_file, "rb") as f:
-                    st.download_button(
-                        label=f"Télécharger {os.path.basename(output_file)}",
-                        data=f,
-                        file_name=os.path.basename(output_file),
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+
+            # Afficher le statut des fichiers traités
+            st.subheader("Statut des fichiers traités :")
+            for file_name, status in file_statuses:
+                if "✅" in status:
+                    st.success(f"{file_name} : {status}")
+                else:
+                    st.error(f"{file_name} : {status}")
+
+            # Bouton pour télécharger le fichier Excel
+            with open(output_path, "rb") as f:
+                st.download_button(
+                    label=f"Télécharger {output_path}",
+                    data=f,
+                    file_name=output_path,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
     else:
         st.warning("Veuillez uploader au moins un fichier PDF.")

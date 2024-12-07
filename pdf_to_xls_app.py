@@ -9,6 +9,9 @@ import streamlit as st
 from PIL import Image
 import base64
 
+
+#######APPLI 1 DIVERSITE LEXICALE#########
+
 #------ Fonction pour l'extraction de texte avec pdfplumber ------#
 def extract_text_with_pdfplumber(pdf_file):
     try:
@@ -169,3 +172,81 @@ if st.button("Lancer l'extraction", key="extract_button"):
                 )
     else:
         st.warning("Veuillez uploader au moins un fichier PDF.")
+
+
+#######APPLI 2 DIVERSITE LEXICALE#########
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+from nltk.tokenize import sent_tokenize, word_tokenize
+import nltk
+
+# Téléchargement des modèles NLTK nécessaires
+nltk.download('punkt', quiet=True)
+nltk.download('punkt_tab', quiet=True)
+
+# Interface Streamlit
+st.title("Analyse comparative de textes")
+
+# Téléchargement de plusieurs fichiers texte
+uploaded_txt_files = st.file_uploader(
+    "Téléchargez jusqu'à 10 fichiers texte (.txt)",
+    type="txt",
+    accept_multiple_files=True,
+    key="multiple_txt_file_uploader"
+)
+
+# Vérification du nombre de fichiers
+if uploaded_txt_files and len(uploaded_txt_files) <= 10:
+    results = []
+
+    for uploaded_file in uploaded_txt_files:
+        # Lecture du contenu du fichier
+        text_content = uploaded_file.read().decode("utf-8")
+        
+        # Analyse du texte
+        sentences = sent_tokenize(text_content)
+        sentence_lengths = [len(word_tokenize(sentence)) for sentence in sentences]
+
+        # Calculs statistiques
+        avg_length = round(np.mean(sentence_lengths), 2)
+        median_length = round(np.median(sentence_lengths), 2)
+        min_length = round(np.min(sentence_lengths), 2)
+        max_length = round(np.max(sentence_lengths), 2)
+        std_length = round(np.std(sentence_lengths), 2)
+
+        # Calcul de la richesse lexicale (Herdan)
+        tokens = word_tokenize(text_content)
+        unique_tokens = set(tokens)
+        herdans_c = round(np.log(len(unique_tokens)) / np.log(len(tokens)), 2) if len(tokens) > 0 else 0
+
+        # Ajout des résultats au tableau comparatif
+        results.append({
+            "Nom du fichier": uploaded_file.name,
+            "Moyenne des mots par phrase": avg_length,
+            "Médiane des mots par phrase": median_length,
+            "Minimum des mots par phrase": min_length,
+            "Maximum des mots par phrase": max_length,
+            "Écart type des mots par phrase": std_length,
+            "Total de mots": len(tokens),
+            "Mots uniques": len(unique_tokens),
+            "Herdan's C": herdans_c
+        })
+
+    # Conversion en DataFrame
+    comparison_df = pd.DataFrame(results)
+
+    # Formater les nombres selon la convention française
+    st.subheader("Tableau comparatif des textes")
+    st.dataframe(comparison_df.style.format({
+        "Moyenne des mots par phrase": "{:,.2f}".format,
+        "Médiane des mots par phrase": "{:,.2f}".format,
+        "Minimum des mots par phrase": "{:,.2f}".format,
+        "Maximum des mots par phrase": "{:,.2f}".format,
+        "Écart type des mots par phrase": "{:,.2f}".format,
+        "Herdan's C": "{:,.2f}".format
+    }, decimal=",", thousands=" "))
+
+else:
+    st.info("Veuillez télécharger jusqu'à 10 fichiers texte (.txt).")

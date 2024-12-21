@@ -1,4 +1,4 @@
-streamlit #------ Importation des modules nécessaires ------#
+#------ Importation des modules nécessaires ------#
 import pdfplumber
 from pdfminer.high_level import extract_text as pdfminer_extract_text
 import pandas as pd
@@ -8,11 +8,7 @@ import string
 import streamlit as st
 from PIL import Image
 import base64
-import spacy
-from collections import Counter
-from typing import Dict, List, Tuple
-import numpy as np
-from scipy.stats import zscore
+
 
 #######APPLI 1 PDF VERS EXCEL#########
 
@@ -254,123 +250,3 @@ if uploaded_txt_files and len(uploaded_txt_files) <= 10:
 
 else:
     st.info("Veuillez télécharger jusqu'à 10 fichiers texte (.txt).")
-
-
-#######APPLI 3 COMPARAISON DE CORPUS#########
-
-def get_word_frequencies(texts: List[str], nlp) -> List[Dict[str, Counter]]:
-    """
-    Analyse les textes et retourne les fréquences des mots par catégorie grammaticale.
-    """
-    results = []
-    for text in texts:
-        doc = nlp(text)
-        frequencies = {
-            'NOUN': Counter(),
-            'ADJ': Counter(),
-            'VERB': Counter()
-        }
-        
-        # Compte les occurrences de chaque mot par catégorie
-        total_words = 0
-        for token in doc:
-            if token.pos_ in frequencies and not token.is_stop and token.is_alpha:
-                frequencies[token.pos_][token.lemma_] += 1
-                total_words += 1
-        
-        # Convertit en fréquences relatives
-        for pos in frequencies:
-            for word in frequencies[pos]:
-                frequencies[pos][word] /= total_words
-        
-        results.append(frequencies)
-    return results
-
-def find_common_words(frequencies: List[Dict[str, Counter]], pos: str, top_n: int = 30) -> List[Tuple[str, float]]:
-    """
-    Trouve les mots ayant des fréquences relatives similaires dans tous les corpus.
-    """
-    # Trouve les mots présents dans tous les corpus
-    common_words = set.intersection(*[set(freq[pos].keys()) for freq in frequencies])
-    
-    # Calcule la variance des fréquences pour chaque mot
-    word_variances = []
-    for word in common_words:
-        freqs = [freq[pos][word] for freq in frequencies]
-        word_variances.append((word, np.var(freqs)))
-    
-    # Retourne les mots avec la plus faible variance (les plus similaires)
-    return sorted(word_variances, key=lambda x: x[1])[:top_n]
-
-def find_distinctive_words(frequencies: List[Dict[str, Counter]], pos: str, corpus_idx: int, top_n: int = 10) -> List[Tuple[str, float]]:
-    """
-    Trouve les mots les plus distinctifs pour un corpus donné.
-    """
-    all_words = set(frequencies[corpus_idx][pos].keys())
-    
-    # Calcule le z-score pour chaque mot
-    word_scores = []
-    for word in all_words:
-        # Obtient les fréquences pour ce mot dans tous les corpus (0 si absent)
-        freqs = [freq[pos].get(word, 0) for freq in frequencies]
-        if freqs[corpus_idx] > 0:  # Ne considère que les mots présents dans le corpus cible
-            z = zscore(freqs)
-            word_scores.append((word, z[corpus_idx]))
-    
-    # Retourne les mots avec les z-scores les plus élevés
-    return sorted(word_scores, key=lambda x: x[1], reverse=True)[:top_n]
-
-# Interface Streamlit pour l'application 3
-st.title("Analyse comparative de corpus depuis Excel")
-
-# Upload du fichier Excel
-uploaded_excel = st.file_uploader(
-    "Choisissez un fichier Excel",
-    type="xlsx",
-    key="excel_uploader"
-)
-
-if uploaded_excel:
-    # Lecture du fichier Excel
-    df = pd.read_excel(uploaded_excel)
-    
-    # Sélection des colonnes à analyser
-    selected_columns = st.multiselect(
-        "Sélectionnez les colonnes à comparer (2 à 3 colonnes)",
-        options=df.columns.tolist(),
-        max_selections=3
-    )
-    
-    if len(selected_columns) >= 2:
-        # Chargement du modèle spaCy
-        nlp = spacy.load("fr_core_news_sm")
-        
-        # Préparation des textes
-        texts = [' '.join(df[col].dropna().astype(str)) for col in selected_columns]
-        
-        # Analyse des fréquences
-        frequencies = get_word_frequencies(texts, nlp)
-        
-        # Affichage des résultats
-        st.subheader("Analyse des similarités et différences lexicales")
-        
-        # Pour chaque catégorie grammaticale
-        for pos, pos_name in [('NOUN', 'Noms'), ('ADJ', 'Adjectifs'), ('VERB', 'Verbes')]:
-            st.write(f"\n### {pos_name}")
-            
-            # Mots communs
-            st.write("#### Mots les plus similaires entre les corpus:")
-            common = find_common_words(frequencies, pos)
-            common_df = pd.DataFrame(common, columns=['Mot', 'Variance'])
-            st.dataframe(common_df)
-            
-            # Mots distinctifs pour chaque corpus
-            st.write("#### Mots les plus distinctifs par corpus:")
-            for i, col in enumerate(selected_columns):
-                st.write(f"**{col}:**")
-                distinctive = find_distinctive_words(frequencies, pos, i)
-                distinctive_df = pd.DataFrame(distinctive, columns=['Mot', 'Score-Z'])
-                st.dataframe(distinctive_df)
-    
-    else:
-        st.info("Veuillez sélectionner au moins 2 colonnes à comparer.")

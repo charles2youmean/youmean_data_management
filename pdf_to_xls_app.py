@@ -10,7 +10,7 @@ from PIL import Image
 import base64
 
 
-#######APPLI 1 DIVERSITE LEXICALE#########
+#######APPLI 1 PDF VERS EXCEL#########
 
 #------ Fonction pour l'extraction de texte avec pdfplumber ------#
 def extract_text_with_pdfplumber(pdf_file):
